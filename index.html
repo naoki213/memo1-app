@@ -1,3 +1,5 @@
+
+<!-- 省略せず全体 -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -7,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
   <style>
+    /* --- スタイルは元のまま（省略可） --- */
     * {
       box-sizing: border-box;
     }
@@ -121,6 +124,7 @@
     <button id="toggleBtn" onclick="toggleAll()" style="display:none;">マーカー ON/OFF</button>
     <button id="markBtn" onclick="addRedMarker()" style="display:none;">赤マーカー</button>
     <button onclick="exportToFile()">出力</button>
+    <button id="mmToggleBtn" onclick="toggleMarkMode()">MM: OFF</button> <!-- ✅ MMボタン追加 -->
     <input type="file" accept=".txt,.html" onchange="importFromFile(event)">
     <input type="text" id="searchInput" placeholder="検索したい文字を入力" oninput="searchText()" />
   </div>
@@ -133,7 +137,7 @@
     let currentPageId = null;
     let pages = {};
     let allVisible = false;
-    let isMarkerMode = false; // 新しく追加: マーカーモードの状態を保持
+    let markMode = false; // ✅ MM機能用フラグ
 
     function applyEventsToMasked(el) {
       el.onclick = function () {
@@ -187,6 +191,11 @@
         }
       });
       allVisible = !allVisible;
+    }
+
+    function toggleMarkMode() {
+      markMode = !markMode;
+      document.getElementById("mmToggleBtn").textContent = `MM: ${markMode ? "ON" : "OFF"}`;
     }
 
     function searchText() {
@@ -335,15 +344,6 @@
       reader.readAsText(file);
     }
 
-    function toggleMarkerMode() {
-      isMarkerMode = !isMarkerMode;
-      if (isMarkerMode) {
-        document.getElementById("toggleBtn").textContent = "マーカーモード: ON";
-      } else {
-        document.getElementById("toggleBtn").textContent = "マーカーモード: OFF";
-      }
-    }
-
     window.onload = function () {
       const pass = prompt("パスワードを入力してください:");
       if (pass === correctPassword) {
@@ -367,8 +367,13 @@
           saveCurrentPageContent();
         });
 
-        // マーカーモード切り替えボタンのイベントリスナーを追加
-        document.getElementById("toggleBtn").onclick = toggleMarkerMode;
+        // ✅ MMがONのときは選択解除で自動マスク
+        document.getElementById("editor").addEventListener("mouseup", () => {
+          if (markMode) {
+            setTimeout(maskSelection, 0);
+          }
+        });
+
       } else {
         alert("パスワードが違います。終了します。");
       }
