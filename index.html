@@ -6,9 +6,10 @@
   <title>メモ帳</title>
   <style>
     body {
-      font-family: sans-serif;
+      font-family: 'Arial', sans-serif;
       margin: 0;
-      background-color: #f9f9f9;
+      background-color: #f4f7fa;
+      color: #333;
     }
     #topButtons {
       position: fixed;
@@ -21,16 +22,53 @@
       gap: 1rem;
       justify-content: flex-start;
       align-items: center;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
       z-index: 1000;
     }
-    #editor {
-      margin-top: 80px;
+    #topButtons input[type="text"] {
+      padding: 0.5rem;
+      font-size: 1rem;
+      border-radius: 4px;
       border: 1px solid #ccc;
-      padding: 1rem;
-      min-height: 300px;
-      background: white;
-      display: none;
+    }
+    .toolbar-btn {
+      padding: 0.7rem 1.2rem;
+      background-color: #007bff;
+      color: white;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .toolbar-btn:hover {
+      background-color: #0056b3;
+    }
+    #editorContainer {
+      margin-top: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .memo {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      position: relative;
+    }
+    .memo-title {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .memo-content {
+      min-height: 200px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #fafafa;
+      overflow-y: auto;
     }
     .masked {
       background-color: red;
@@ -46,11 +84,6 @@
       color: black;
       opacity: 0.5;
     }
-    .red-marker {
-      background-color: red;
-      color: red;
-      opacity: 1;
-    }
     .highlight {
       background-color: yellow;
       border-radius: 4px;
@@ -60,35 +93,97 @@
       padding: 0.5rem 1rem;
       font-size: 1rem;
     }
-    input[type="text"] {
-      padding: 0.5rem;
-      font-size: 1rem;
-      flex-grow: 1;
+    input[type="file"] {
+      display: none;
     }
   </style>
 </head>
 <body>
   <div id="topButtons">
-    <button id="toggleBtn" onclick="toggleAll()" style="display:none;">マーカー ON/OFF</button>
-    <button id="markBtn" onclick="addRedMarker()" style="display:none;">赤マーカー</button>
+    <button class="toolbar-btn" onclick="autoMask()">自動マーカー</button>
+    <button class="toolbar-btn" onclick="toggleAll()">マーカー ON/OFF</button>
+    <button class="toolbar-btn" onclick="addRedMarker()">赤マーカー</button>
+    <button class="toolbar-btn" onclick="exportToFile()">出力</button>
+    <input type="file" accept=".txt,.html" onchange="importFromFile(event)">
     <input type="text" id="searchInput" placeholder="検索したい文字を入力" oninput="searchText()" />
   </div>
 
-  <div id="editor" contenteditable="true"></div>
+  <div id="editorContainer">
+    <!-- メモのコンテナ -->
+    <div id="memoList"></div>
+  </div>
 
   <script>
     const correctPassword = "2410";
     let allVisible = false;
+    let currentMemoIndex = 0;
 
+    // メモ追加ボタン
+    function addMemo() {
+      const newMemo = document.createElement('div');
+      newMemo.classList.add('memo');
+      newMemo.innerHTML = `
+        <div contenteditable="true" class="memo-title">新しいメモ</div>
+        <div contenteditable="true" class="memo-content" oninput="saveMemoContent(this)">メモ内容</div>
+      `;
+      document.getElementById('memoList').appendChild(newMemo);
+      currentMemoIndex++;
+    }
+
+    // メモを保存する
+    function saveMemoContent(contentElement) {
+      localStorage.setItem(`memoContent${currentMemoIndex}`, contentElement.innerHTML);
+    }
+
+    // 自動マーカー機能
+    function autoMask() {
+      const activeEditor = document.querySelector('.memo.active .memo-content');
+      if (!activeEditor) return;
+
+      const walker = document.createTreeWalker(activeEditor, NodeFilter.SHOW_TEXT, null, false);
+      const textNodes = [];
+
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+      }
+
+      textNodes.forEach(node => {
+        const regex = /■(.*?)■/g;
+        let match;
+        const fragments = [];
+        let lastIndex = 0;
+
+        while ((match = regex.exec(node.textContent)) !== null) {
+          const [fullMatch, innerText] = match;
+          const matchStart = match.index;
+          const matchEnd = regex.lastIndex;
+
+          fragments.push(document.createTextNode(node.textContent.slice(lastIndex, matchStart)));
+
+          const span = document.createElement('span');
+          span.className = 'masked';
+          span.textContent = innerText;
+          applyEventsToMasked(span);
+
+          fragments.push(span);
+          lastIndex = matchEnd;
+        }
+
+        if (fragments.length > 0) {
+          fragments.push(document.createTextNode(node.textContent.slice(lastIndex)));
+          const parent = node.parentNode;
+          fragments.forEach(frag => parent.insertBefore(frag, node));
+          parent.removeChild(node);
+        }
+      });
+    }
+
+    // マスクイベントを適用
     function applyEventsToMasked(el) {
       el.onclick = function () {
         this.classList.toggle("revealed");
         if (this.classList.contains("red-marker")) {
-          if (this.style.opacity === "1") {
-            this.style.opacity = "0.3";
-          } else {
-            this.style.opacity = "1";
-          }
+          this.style.opacity = this.style.opacity === "1" ? "0.3" : "1";
         }
       };
       el.oncontextmenu = function (e) {
@@ -98,22 +193,19 @@
       };
     }
 
-    function maskSelection() {
-      const sel = window.getSelection();
-      if (!sel.rangeCount) return;
-      const range = sel.getRangeAt(0);
-      const selectedText = range.toString();
-      if (!selectedText) return;
-
-      const span = document.createElement("span");
-      span.className = "masked";
-      span.textContent = selectedText;
-      applyEventsToMasked(span);
-
-      range.deleteContents();
-      range.insertNode(span);
+    // マーカー表示切替
+    function toggleAll() {
+      document.querySelectorAll(".masked").forEach(el => {
+        if (allVisible) {
+          el.classList.remove("revealed");
+        } else {
+          el.classList.add("revealed");
+        }
+      });
+      allVisible = !allVisible;
     }
 
+    // 赤マーカー追加
     function addRedMarker() {
       const sel = window.getSelection();
       if (!sel.rangeCount) return;
@@ -130,20 +222,10 @@
       range.insertNode(span);
     }
 
-    function toggleAll() {
-      document.querySelectorAll(".masked").forEach(el => {
-        if (allVisible) {
-          el.classList.remove("revealed");
-        } else {
-          el.classList.add("revealed");
-        }
-      });
-      allVisible = !allVisible;
-    }
-
+    // メモ内容の検索
     function searchText() {
       const searchInput = document.getElementById("searchInput").value;
-      const editor = document.getElementById("editor");
+      const editor = document.querySelector('.memo.active .memo-content');
       const text = editor.innerHTML;
       editor.innerHTML = text.replace(/<span class="highlight">(.*?)<\/span>/g, "$1");
 
@@ -171,28 +253,32 @@
       }
     }
 
-    function loadContent() {
-      const saved = localStorage.getItem("maskedContent");
-      if (saved) {
-        document.getElementById("editor").innerHTML = saved;
-        document.querySelectorAll(".masked").forEach(el => applyEventsToMasked(el));
-      }
+    // メモを出力
+    function exportToFile() {
+      const content = document.querySelector('.memo.active .memo-content').innerHTML;
+      const blob = new Blob([content], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "memo.html";
+      a.click();
+    }
 
-      // Red marker on double-click removed
-
-      setInterval(() => {
-        const content = document.getElementById("editor").innerHTML;
-        localStorage.setItem("maskedContent", content);
-      }, 2000);
+    // メモをインポート
+    function importFromFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        document.querySelector('.memo.active .memo-content').innerHTML = content;
+      };
+      reader.readAsText(file);
     }
 
     window.onload = function () {
       const pass = prompt("パスワードを入力してください:");
       if (pass === correctPassword) {
-        document.getElementById("editor").style.display = "block";
-        document.getElementById("toggleBtn").style.display = "inline-block";
-        document.getElementById("markBtn").style.display = "inline-block";
-        loadContent();
+        document.getElementById("topButtons").style.display = "block";
       } else {
         alert("パスワードが違います。");
       }
